@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hollowmere</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,700&family=Instrument+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: one lamplit column on phones (stage, members, notebook, talk); stage beside a side rail on wide screens. */
+:root {
+  color-scheme: dark;
+  --ink: #0f181b; --panel: #17242a; --raise: #1f3038; --line: #2c4049;
+  --fog: #e7ede8; --mute: #94a8a6; --lamp: #e9b44c; --moss: #86bd92; --rust: #e07b68;
+  --display: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --body: 'Instrument Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { background: var(--ink); color: var(--fog); font: 16px/1.5 var(--body); min-height: 100vh;
+  background-image: radial-gradient(ellipse 80% 50% at 50% -10%, #23404a 0%, transparent 70%); background-repeat: no-repeat; }
+[hidden] { display: none !important; }
+h1, h2, h3 { font-family: var(--display); font-weight: 700; margin: 0; text-wrap: balance; line-height: 1.15; }
+h1 { font-size: 2rem; } h2 { font-size: 1.5rem; } h3 { font-size: 1.05rem; }
+p { margin: 0; }
+.wrap { max-width: 1040px; margin: 0 auto; padding-block: 12px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.label { font-size: .72rem; letter-spacing: .12em; text-transform: uppercase; color: var(--mute); font-weight: 600; }
+.mute { color: var(--mute); } .lamp { color: var(--lamp); } .moss { color: var(--moss); } .rust { color: var(--rust); }
+.stack { display: flex; flex-direction: column; gap: 14px; } .tight { gap: 8px; }
+.row { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+
+/* top bar */
+.bar { display: flex; flex-wrap: wrap; gap: 6px 18px; align-items: baseline; padding-block: 10px; border-bottom: 1px solid var(--line); margin-bottom: 16px; }
+.bar .brand { font-family: var(--display); font-weight: 700; font-size: 1.2rem; color: var(--lamp); margin-right: auto; }
+.bar b { font-variant-numeric: tabular-nums; font-weight: 600; }
+#clock { font-variant-numeric: tabular-nums; font-weight: 600; min-width: 3.2em; text-align: right; }
+#clock.low { color: var(--rust); }
+
+.grid { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
+@media (min-width: 860px) { .grid { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr); align-items: start; } .side { position: sticky; top: 12px; } }
+.panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 18px; min-width: 0; }
+#stage { border-color: #3d5560; }
+#stage h2 { color: var(--lamp); }
+
+/* buttons */
+button { font: inherit; color: inherit; cursor: pointer; border-radius: 8px; border: 1px solid var(--line); background: var(--raise); padding: 11px 14px; min-height: 44px; text-align: left; }
+button:hover:not(:disabled) { border-color: var(--lamp); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--lamp); outline-offset: 2px; }
+button:disabled { opacity: .5; cursor: default; }
+button.go { background: var(--lamp); color: #201503; border-color: var(--lamp); font-weight: 600; text-align: center; }
+button.danger { border-color: var(--rust); color: var(--rust); }
+button.on { border-color: var(--lamp); background: #3a3520; }
+button.link { background: none; border: none; padding: 4px 0; min-height: 0; color: var(--mute); text-decoration: underline; font-size: .85rem; }
+.choices { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+.choices button { display: flex; gap: 10px; align-items: center; }
+input[type=text] { font: inherit; color: var(--fog); background: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 11px 12px; min-height: 44px; width: 100%; min-width: 0; }
+
+/* members */
+.seal { --h: 0; flex: none; width: 34px; height: 34px; border-radius: 50%; display: inline-grid; place-items: center; font: 700 .8rem var(--display);
+  background: hsl(var(--h) 38% 30%); color: hsl(var(--h) 60% 88%); border: 1px solid hsl(var(--h) 40% 48%); }
+.member { display: flex; gap: 10px; align-items: center; padding: 6px 0; min-width: 0; }
+.member .who { min-width: 0; flex: 1; line-height: 1.25; }
+.member .who span { display: block; font-size: .8rem; color: var(--mute); }
+.member.out { opacity: .5; } .member.out .who b { text-decoration: line-through; }
+.tag { font-size: .7rem; letter-spacing: .06em; text-transform: uppercase; border: 1px solid var(--line); border-radius: 99px; padding: 2px 8px; color: var(--mute); white-space: nowrap; }
+.tag.t { color: var(--rust); border-color: var(--rust); } .tag.l { color: var(--moss); border-color: var(--moss); }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--lamp); flex: none; animation: pulse 1.4s infinite; }
+@keyframes pulse { 50% { opacity: .25; } }
+@media (prefers-reduced-motion: reduce) { .dot { animation: none; } }
+
+.code { font: 700 2.6rem var(--display); letter-spacing: .18em; color: var(--lamp); }
+.card { border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; background: var(--ink); }
+.card.whisper { border-style: dashed; color: var(--mute); font-size: .92rem; }
+.big { font: 700 1.9rem var(--display); }
+.items { display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 8px; }
+.items div { border: 1px solid var(--line); border-radius: 8px; padding: 10px; text-align: center; background: var(--ink); }
+ul.plain { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+ul.plain li { padding-left: 12px; border-left: 2px solid var(--line); font-size: .95rem; }
+#chatlog { height: 210px; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; font-size: .95rem; overflow-wrap: anywhere; }
+#chatlog b { color: var(--lamp); font-weight: 600; }
+.tabs { display: flex; gap: 6px; } .tabs button { min-height: 32px; padding: 4px 12px; font-size: .85rem; }
+#toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--rust); color: #1d0906; padding: 10px 16px; border-radius: 8px; font-weight: 600; max-width: calc(100% - 32px); z-index: 5; }
+details summary { cursor: pointer; color: var(--mute); }
+#join { max-width: 440px; margin: 8vh auto 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <section id="join" class="stack" hidden>
+    <p class="label">A game of hidden traitors for 4 to 15</p>
+    <h1 style="font-size:2.8rem;color:var(--lamp)">Hollowmere</h1>
+    <p class="mute">A marsh lodge, a vault, and somebody among you emptying it. Solve the lodge's quests together, read the clues, and exile the traitors before they outnumber you.</p>
+    <form id="joinform" class="panel stack">
+      <label class="stack tight" for="name"><span class="label">Your name</span><input type="text" id="name" maxlength="16" autocomplete="nickname" required></label>
+      <label class="stack tight" for="codein"><span class="label">Lodge code (leave empty to open a new lodge)</span><input type="text" id="codein" maxlength="4" autocapitalize="characters" autocomplete="off" style="text-transform:uppercase;letter-spacing:.2em"></label>
+      <button class="go" id="joinbtn">Enter the lodge</button>
+    </form>
+  </section>
+
+  <div id="game" hidden>
+    <header class="bar">
+      <span class="brand">Hollowmere</span>
+      <span><span class="label">Lodge</span> <b id="b-code"></b></span>
+      <span id="b-round"></span>
+      <span><span class="label">Vault</span> <b id="b-vault"></b></span>
+      <span id="clock"></span>
+    </header>
+    <div class="grid">
+      <section id="stage" class="panel stack" aria-live="polite"></section>
+      <div class="side stack">
+        <section class="panel stack tight"><h3>Members</h3><div id="roster"></div></section>
+        <section class="panel stack tight"><h3>Notebook</h3><div id="notebook" class="stack tight"></div></section>
+        <section class="panel stack tight">
+          <div class="row" style="justify-content:space-between"><h3>Talk</h3><div class="tabs" id="chantabs"></div></div>
+          <div id="chatlog"></div>
+          <form id="chatform" class="row" style="flex-wrap:nowrap"><input type="text" id="chatin" maxlength="240" placeholder="Say something" autocomplete="off"><button class="go" id="chatsend">Send</button></form>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>
+<div id="toast" hidden role="alert"></div>
+
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const params = new URLSearchParams(location.search), seat = params.get('seat') || '';
+const store = { get(k) { try { return localStorage.getItem(k + seat); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem(k + seat, v); } catch (e) {} } };
+let token = store.get('hm-token');
+if (!token) { token = [...crypto.getRandomValues(new Uint8Array(12))].map(b => b.toString(16).padStart(2, '0')).join(''); store.set('hm-token', token); }
+let S = null, code = null, es = null, offset = 0, stageKey = '';
+const ui = { team: new Set(), forge: false, chan: 'all' };
+const cache = {};
+const put = (sel, html) => { if (cache[sel] !== html) { cache[sel] = html; $(sel).innerHTML = html; return true; } return false; };
+
+function toast(msg) { const t = $('#toast'); t.textContent = msg; t.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => t.hidden = true, 3500); }
+async function post(url, data) {
+  try {
+    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+    const j = await r.json(); if (!r.ok) throw new Error(j.error || 'Something went wrong.'); return j;
+  } catch (e) { toast(e.message === 'Failed to fetch' ? 'Cannot reach the lodge. Is the host computer still running the game?' : e.message); return null; }
+}
+const send = (type, extra) => post('/api/action', Object.assign({ code, token, type }, extra));
+
+async function join(name, wanted, quiet) {
+  const r = await (quiet ? fetch('/api/join', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, code: wanted, token }) }).then(x => x.ok ? x.json() : null).catch(() => null)
+    : post('/api/join', { name, code: wanted, token }));
+  if (!r) return false;
+  code = r.code; store.set('hm-room', code);
+  const u = new URL(location.href); u.searchParams.set('room', code); history.replaceState(null, '', u);
+  if (es) es.close();
+  es = new EventSource(`/api/stream?code=${code}&token=${token}`);
+  es.onmessage = e => { S = JSON.parse(e.data); offset = S.now - Date.now(); render(); };
+  es.onerror = () => { if (es.readyState === 2) { S = null; showJoin(); toast('That lodge has closed. Open a new one.'); } };
+  return true;
+}
+function showJoin() { $('#game').hidden = true; $('#join').hidden = false; $('#codein').value = params.get('room') || ''; }
+
+/* ---------- small pieces ---------- */
+const P = id => S.players.find(p => p.id === id);
+const nm = id => esc(P(id) ? P(id).name : '?');
+const names = ids => { const n = ids.map(nm); return n.length < 2 ? n.join('') : n.slice(0, -1).join(', ') + ' and ' + n[n.length - 1]; };
+const seal = p => `<span class="seal" style="--h:${p.char * 24}">${esc(p.name.slice(0, 2).toUpperCase())}</span>`;
+const title = p => 'the ' + S.characters[p.char];
+const cont = (text, livingOnly) => S.you.alive || !livingOnly ? (S.ready ? '<p class="mute">Waiting for the others…</p>' : `<button class="go" data-act="ready">${text || 'Continue'}</button>`) : '';
+const hostSkip = () => S.hostId === S.you.id ? '<button class="link" data-act="skip">Host: move on without waiting</button>' : '';
+const whisper = html => `<div class="card whisper"><span class="label rust">Traitor's whisper</span><br>${html}</div>`;
+const outNote = () => `<p class="mute">You are out of the game. You can watch, but the living cannot hear you.</p>`;
+const waitingOn = () => { const w = S.waiting.filter(id => P(id)); return w.length ? `<p class="mute">Waiting for ${names(w)}.</p>` : ''; };
+const personBtn = (p, act, extra) => `<button data-act="${act}" data-id="${p.id}" ${extra || ''}>${seal(p)}<span>${esc(p.name)}</span></button>`;
+const living = () => S.players.filter(p => p.alive);
+
+/* ---------- the stage, phase by phase ---------- */
+const stages = {
+  lobby() {
+    const me = P(S.you.id), host = S.hostId === me.id, humans = S.players.length;
+    const base = ['localhost', '127.0.0.1'].includes(location.hostname) && S.lan[0] ? S.lan[0] : location.origin;
+    return `<p class="label">Gathering</p><h2>Lodge code</h2><div class="code">${S.code}</div>
+      <p>${/^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/.test(location.hostname) ? 'Friends on the same Wi-Fi open' : 'Send friends this link:'} <b style="overflow-wrap:anywhere;user-select:all">${esc(base)}/?room=${S.code}</b></p>
+      <div class="stack tight"><p class="label">Choose your character</p><div class="choices">${S.characters.map((c, i) => {
+        const owner = S.players.find(p => p.char === i);
+        return `<button data-act="char" data-char="${i}" class="${owner === me ? 'on' : ''}" ${owner && owner !== me ? 'disabled' : ''}><span class="seal" style="--h:${i * 24}">${c[0]}</span><span>${c}${owner ? `<br><small class="mute">${esc(owner.name)}</small>` : ''}</span></button>`;
+      }).join('')}</div></div>
+      ${host ? `<div class="stack tight"><p class="label">Seats at the table</p>
+        <div class="row"><button data-act="seats" data-seats="${S.seats - 1}" ${S.seats <= Math.max(4, humans) ? 'disabled' : ''} aria-label="One seat fewer">−</button><span class="big">${S.seats}</span><button data-act="seats" data-seats="${S.seats + 1}" ${S.seats >= 15 ? 'disabled' : ''} aria-label="One seat more">+</button></div>
+        <p class="mute">${humans} ${humans === 1 ? 'person is' : 'people are'} here. ${S.seats > humans ? `${S.seats - humans} lodge resident${S.seats - humans === 1 ? '' : 's'} (computer players) will fill the empty seats.` : 'Every seat is taken by a person.'}
+        ${S.seats <= 7 ? 'One traitor.' : S.seats <= 12 ? 'Two traitors.' : 'Three traitors.'} ${S.seats > 6 ? 'With more than 6 at the table, someone is exiled every round and the traitors strike every night.' : 'With 6 or fewer, the council meets every second round and nobody vanishes at night.'}</p>
+        <button class="go" data-act="start">Begin the game</button></div>` : `<p class="mute">Waiting for ${nm(S.hostId)} to begin.</p>`}
+      <details><summary>How to play</summary><div class="stack tight" style="margin-top:10px">
+        <p>Most of you are <b class="moss">loyal</b>. One to three are <b class="rust">traitors</b> who know each other.</p>
+        <p><b>Quests.</b> Each round the lodge faces a quest: a cipher, a ledger riddle, a memory test, a night crossing with a chosen team, or a search of the rooms. Success fills the vault and earns a clue about who the traitors are.</p>
+        <p><b>Traitors</b> are whispered the answers so they can blend in, and can quietly sabotage: answer wrong, wreck the crossing, or forge the evidence.</p>
+        <p><b>Council.</b> Talk it through, then vote. The exiled member's role is revealed.</p>
+        <p><b>Winning.</b> The loyal win by exiling every traitor. The traitors win if they equal the loyal in number, or survive the final round.</p></div></details>`;
+  },
+  roles() {
+    const t = S.you.role === 'traitor', mates = S.players.filter(p => p.role === 'traitor' && p.id !== S.you.id);
+    return `<p class="label">Your secret role</p><h2 class="${t ? 'rust' : 'moss'}" style="color:inherit"><span class="${t ? 'rust' : 'moss'}">${t ? 'You are a traitor' : 'You are loyal'}</span></h2>
+      <p>${t ? `Empty the vault without being caught. ${mates.length ? `Your fellow traitor${mates.length > 1 ? 's are' : ' is'} <b>${names(mates.map(p => p.id))}</b>.` : 'You work alone.'} During quests you will be whispered the answers: use them to look helpful, or sabotage when you can hide it.`
+        : 'Help the lodge through its quests, study the clues in your notebook, and work out who is lying. Keep your screen to yourself.'}</p>
+      <p class="mute">${S.maxRounds} rounds at most.</p>${cont('I understand')}`;
+  },
+  quest() {
+    const q = S.quest, head = `<p class="label">Round ${S.round} quest</p><h2>${q.title}</h2>`;
+    if (!S.you.alive) return head + outNote() + waitingOn();
+    if (q.kind === 'expedition') {
+      if (q.stage === 'team') {
+        if (q.leader !== S.you.id) return head + `<p><b>${nm(q.leader)}</b> leads tonight and is choosing ${q.size} members to carry supplies across the marsh. If anyone on the team sabotages a crate, the quest fails, and only the number of sabotaged crates is announced.</p>`;
+        return head + `<p>You lead tonight. Choose <b>${q.size}</b> members to make the crossing (you may include yourself). One traitor on the team can ruin it.</p>
+          <div class="choices">${living().map(p => `<button data-act="toggle" data-id="${p.id}" class="${ui.team.has(p.id) ? 'on' : ''}">${seal(p)}<span>${esc(p.name)}</span></button>`).join('')}</div>
+          <button class="go" data-act="team" ${ui.team.size === q.size ? '' : 'disabled'}>Send these ${q.size} (${ui.team.size} chosen)</button>`;
+      }
+      const on = q.team.includes(S.you.id);
+      return head + `<p>Crossing tonight: <b>${names(q.team)}</b>, chosen by ${nm(q.leader)}.</p>` +
+        (!on ? '<p class="mute">You stay at the lodge and wait for word.</p>' : q.played ? '<p class="mute">Your crate is on the boat.</p>'
+          : `<div class="choices"><button data-act="play" data-play="secure">Carry your crate safely</button>${q.canSabotage ? '<button class="danger" data-act="play" data-play="sabotage">Sabotage your crate</button>' : ''}</div>
+             ${q.canSabotage ? whisper('Loyal members see only the first button. A sabotage fails the quest, but everyone on the team becomes a suspect, you included.') : ''}`) + waitingOn();
+    }
+    if (q.kind === 'search') {
+      return head + `<p>Evidence against the traitors is hidden in one room. Pick a room to search. Those who find it each get a private clue in their notebook. Afterwards everyone sees who searched where.</p>
+        <div class="choices">${q.rooms.map((r, i) => `<button data-act="search" data-room="${i}" class="${q.picked === i ? 'on' : ''}" ${q.picked !== undefined ? 'disabled' : ''}>${r}</button>`).join('')}</div>
+        ${q.hot !== undefined ? whisper(`The evidence is in the <b>${q.rooms[q.hot]}</b>. ${q.picked === undefined ? `<br><button data-act="forge" class="${ui.forge ? 'on' : ''}" style="margin-top:8px">${ui.forge ? 'Forging: on' : 'Forging: off'}</button> If you search that room with forging on, everyone who finds the evidence gets a false clue naming only loyal members.` : ''}`) : ''}
+        ${q.picked !== undefined ? waitingOn() : ''}`;
+    }
+    if (q.stage === 'study') return head + `<p>Memorise the study table. It will be cleared in a few seconds.</p><div class="items">${q.study.map(i => `<div>${i}</div>`).join('')}</div>`;
+    return head + `<p>${esc(q.prompt)}</p>
+      <div class="choices">${q.options.map((o, i) => `<button data-act="answer" data-choice="${i}" class="${q.picked === i ? 'on' : ''}" ${q.picked !== undefined ? 'disabled' : ''}>${esc(o)}</button>`).join('')}</div>
+      ${q.edge !== undefined ? whisper(`The right answer is <b>${esc(q.options[q.edge])}</b>. Answer it to blend in, or answer wrong to hurt the quest. Only the number of wrong answers is announced.`) : ''}
+      <p class="mute">Everyone answers alone. No conferring.</p>${q.picked !== undefined ? waitingOn() : ''}`;
+  },
+  qresult() {
+    const r = S.last; let h = `<p class="label">Round ${S.round} result</p><h2>${r.title}</h2>`;
+    if (r.kind === 'search') {
+      h += `<p class="big ${r.found ? 'moss' : 'rust'}">${r.found ? 'Evidence found' : 'Evidence missed'}</p><p>It was hidden in the <b>${r.rooms[r.hot]}</b>.</p>
+        <ul class="plain">${r.rooms.map((room, i) => { const ids = Object.keys(r.picks).filter(id => r.picks[id] === i); return `<li><b class="${i === r.hot ? 'lamp' : ''}">${room}</b>: ${ids.length ? names(ids) : 'nobody'}</li>`; }).join('')}</ul>
+        ${r.yourClue ? `<div class="card"><span class="label lamp">Your private find</span><br>${esc(r.yourClue)}</div>` : r.found ? '<p class="mute">Those who searched the right room each hold a private clue. Ask them what it says, and decide whether you believe them.</p>' : ''}`;
+    } else {
+      h += `<p class="big ${r.success ? 'moss' : 'rust'}">${r.success ? 'Quest passed' : 'Quest failed'}</p>`;
+      if (r.kind === 'expedition') h += `<p>${names(r.team)} made the crossing, chosen by ${nm(r.leader)}. ${r.sabotages ? `<b class="rust">${r.sabotages} crate${r.sabotages > 1 ? 's were' : ' was'} sabotaged.</b>` : 'Every crate arrived intact.'}</p>`;
+      else h += `<p>The answer was <b>${esc(r.answerText)}</b>. <b>${r.wrong}</b> of ${r.total} answered wrongly; the lodge could afford ${r.allowed}.</p>${r.youCorrect === undefined ? '' : `<p class="mute">Your own answer was ${r.youCorrect ? 'right' : 'wrong'}.</p>`}`;
+      h += r.clue ? `<div class="card"><span class="label lamp">Clue earned</span><br>${esc(r.clue)}</div>` : '<p class="mute">No clue tonight, and 100 gold is missing from the vault.</p>';
+    }
+    return h + `<p class="mute">${S.councilNext ? 'The council meets next.' : 'No council this round. The next quest follows.'}</p>` + cont() + hostSkip();
+  },
+  discuss() {
+    return `<p class="label">Round ${S.round} council</p><h2>Who do you trust?</h2>
+      <p>Talk it over, out loud or in Talk. Compare the clues in your notebooks. When the talking is done, the lodge votes on one member to exile${S.nightRule ? '' : ', or agrees to exile no one'}.</p>
+      ${S.you.role === 'traitor' ? whisper('Steer suspicion onto a loyal member. Your private channel is in Talk.') : ''}
+      ${cont('I am ready to vote', true)}${waitingOn()}${hostSkip()}`;
+  },
+  vote() {
+    const head = `<p class="label">Round ${S.round} vote</p><h2>Cast your vote</h2>`;
+    if (!S.you.alive) return head + outNote() + waitingOn();
+    if (S.voted) return head + `<p>You voted ${S.voted === 'none' ? 'to exile no one' : 'to exile <b>' + nm(S.voted) + '</b>'}.</p>` + waitingOn();
+    return head + `<p>The member with the most votes is exiled and their role revealed. ${S.nightRule ? 'With more than 6 at the table a tie is settled by drawing lots.' : 'A tie exiles no one.'}</p>
+      <div class="choices">${living().filter(p => p.id !== S.you.id).map(p => personBtn(p, 'vote')).join('')}${S.nightRule ? '' : '<button data-act="vote" data-id="none">Exile no one</button>'}</div>`;
+  },
+  verdict() { return `<p class="label">Round ${S.round} verdict</p>` + verdictHtml() + `<p class="mute">${S.nightRule ? 'Night falls. With more than 6 still here, the traitors will strike.' : 'The lodge sleeps safely tonight.'}</p>` + cont() + hostSkip(); },
+  night() {
+    const head = `<p class="label">Round ${S.round} night</p><h2>The lodge sleeps</h2>`;
+    if (!S.you.alive) return head + outNote() + waitingOn();
+    if (S.nightPick) return head + `<p>You chose <b>${nm(S.nightPick)}</b>.</p>` + waitingOn();
+    const t = S.you.role === 'traitor';
+    return head + (t ? whisper('Choose a loyal member to make vanish. If the traitors disagree, the most-chosen name goes.') : '<p>Before you sleep, mark the member you suspect most. The marks are counted and announced at dawn, without names attached.</p>') +
+      `<div class="choices">${living().filter(p => p.id !== S.you.id && !(t && p.role === 'traitor')).map(p => personBtn(p, 'night')).join('')}</div>`;
+  },
+  dawn() {
+    const d = S.dawn;
+    return `<p class="label">Round ${S.round} dawn</p><h2>${nm(d.victim)} has vanished</h2><p>Their room is empty and the window is open. They were loyal.</p>
+      ${d.whispers.length ? `<div class="card"><span class="label">Whispers overnight</span><ul class="plain" style="margin-top:8px">${d.whispers.map(w => `<li>${nm(w.id)}: ${w.count} mark${w.count > 1 ? 's' : ''}</li>`).join('')}</ul></div>` : ''}` + cont() + hostSkip();
+  },
+  over() {
+    const w = S.winner, mine = (w.side === 'traitor') === (S.you.role === 'traitor');
+    return `<p class="label">Game over</p><h2><span class="${w.side === 'traitor' ? 'rust' : 'moss'}">${w.side === 'traitor' ? 'The traitors win' : 'The loyal win'}</span></h2>
+      <p>${esc(w.reason)} ${mine ? 'Your side takes it.' : 'Your side lost this one.'}</p>
+      <p>Vault saved: <b>${S.vault} gold</b>. Lost to sabotage: <b>${S.stolen} gold</b>.</p>
+      <div><p class="label">The traitors were</p><p class="big rust">${names(S.players.filter(p => p.role === 'traitor').map(p => p.id))}</p></div>
+      ${S.hostId === S.you.id ? '<button class="go" data-act="again">Back to the lodge for another game</button>' : `<p class="mute">${nm(S.hostId)} can start another game.</p>`}`;
+  },
+};
+function verdictHtml() {
+  const v = S.verdict, groups = {};
+  for (const [voter, target] of Object.entries(v.votes)) (groups[target] = groups[target] || []).push(voter);
+  return `<h2>${v.exiled ? `${nm(v.exiled)} is exiled` : 'Nobody is exiled'}</h2>
+    ${v.exiled ? `<p class="big ${v.role === 'traitor' ? 'rust' : 'moss'}">${v.role === 'traitor' ? 'A traitor' : 'A loyal member'}</p>` : '<p>The council could not agree.</p>'}
+    ${v.lot ? '<p class="mute">The vote was tied, so lots were drawn.</p>' : ''}
+    <ul class="plain">${Object.entries(groups).sort((a, b) => b[1].length - a[1].length).map(([t, vs]) => `<li><b>${t === 'none' ? 'Exile no one' : nm(t)}</b> (${vs.length}): ${names(vs)}</li>`).join('')}</ul>`;
+}
+
+/* ---------- render ---------- */
+const PHASES = { lobby: 'Gathering', roles: 'Roles', quest: 'Quest', qresult: 'Result', discuss: 'Council', vote: 'Vote', verdict: 'Verdict', night: 'Night', dawn: 'Dawn', over: 'Game over' };
+function render() {
+  if (!S) return;
+  $('#join').hidden = true; $('#game').hidden = false;
+  const key = `${S.round}-${S.phase}-${S.quest ? S.quest.stage : ''}`;
+  if (key !== stageKey) { stageKey = key; ui.team = new Set(); ui.forge = false; window.scrollTo({ top: 0 }); }
+  $('#b-code').textContent = S.code;
+  $('#b-round').innerHTML = S.round ? `<span class="label">Round</span> <b>${S.round}/${S.maxRounds}</b> <span class="mute">${PHASES[S.phase]}</span>` : `<span class="mute">${PHASES[S.phase]}</span>`;
+  $('#b-vault').textContent = S.vault + ' gold';
+  put('#stage', stages[S.phase]());
+  put('#roster', S.players.map(p => `<div class="member ${p.alive ? '' : 'out'}">${seal(p)}<div class="who"><b>${esc(p.name)}</b>${p.id === S.you.id ? ' <span style="display:inline" class="lamp">(you)</span>' : ''}<span>${title(p)}${p.bot ? ' · resident' : p.online ? '' : ' · away'}${p.fate ? ' · ' + p.fate : ''}</span></div>
+    ${S.waiting.includes(p.id) ? '<span class="dot" title="Still deciding"></span>' : ''}${p.id === S.hostId ? '<span class="tag">host</span>' : ''}${p.role === 'traitor' ? '<span class="tag t">traitor</span>' : p.role === 'loyal' ? '<span class="tag l">loyal</span>' : ''}</div>`).join(''));
+  const role = S.you.role ? `<p>You are <b class="${S.you.role === 'traitor' ? 'rust' : 'moss'}">${S.you.role === 'traitor' ? 'a traitor' : 'loyal'}</b>.</p>` : '';
+  const li = a => a.map(c => `<li><span class="mute">Round ${c.round}.</span> ${esc(c.text)}</li>`).join('');
+  put('#notebook', role + (S.clues.length ? `<p class="label">Clues everyone has</p><ul class="plain">${li(S.clues)}</ul>` : '<p class="mute">Clues earned from quests will be kept here.</p>') +
+    (S.you.notes.length ? `<p class="label lamp">Only you know</p><ul class="plain">${li(S.you.notes)}</ul>` : '') +
+    (S.events.length ? `<details><summary>Chronicle of the game</summary><ul class="plain" style="margin-top:8px">${li(S.events)}</ul></details>` : ''));
+  const canT = !!S.tchat && S.you.role === 'traitor' && !['lobby', 'over'].includes(S.phase);
+  if (!canT && ui.chan === 'traitors' && S.phase !== 'over') ui.chan = 'all';
+  put('#chantabs', S.tchat ? `<button data-act="chan" data-chan="all" class="${ui.chan === 'all' ? 'on' : ''}">Everyone</button><button data-act="chan" data-chan="traitors" class="${ui.chan === 'traitors' ? 'on' : ''}">Traitors only</button>` : '');
+  const log = ui.chan === 'traitors' && S.tchat ? S.tchat : S.chat;
+  if (put('#chatlog', log.length ? log.map(m => `<div><b>${nm(m.from)}</b> ${esc(m.text)}</div>`).join('') : `<p class="mute">${ui.chan === 'traitors' ? 'Only traitors can read this channel.' : 'Nothing said yet.'}</p>`)) $('#chatlog').scrollTop = 1e6;
+  const mute = (!S.you.alive && !['lobby', 'over'].includes(S.phase)) || (ui.chan === 'traitors' && !canT);
+  $('#chatin').disabled = $('#chatsend').disabled = mute;
+  clock();
+}
+function clock() {
+  const el = $('#clock'); if (!S || !S.ends || ['lobby', 'over'].includes(S.phase)) { el.textContent = ''; return; }
+  const s = Math.max(0, Math.ceil((S.ends - Date.now() - offset) / 1000));
+  el.textContent = Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); el.className = s <= 10 ? 'low' : '';
+}
+setInterval(clock, 500);
+
+/* ---------- input ---------- */
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-act]'); if (!b || b.disabled) return;
+  const d = b.dataset;
+  switch (d.act) {
+    case 'toggle': ui.team.has(d.id) ? ui.team.delete(d.id) : ui.team.add(d.id); return render();
+    case 'forge': ui.forge = !ui.forge; return render();
+    case 'chan': ui.chan = d.chan; return render();
+    case 'char': return send('char', { char: Number(d.char) });
+    case 'seats': return send('seats', { seats: Number(d.seats) });
+    case 'answer': return send('answer', { choice: Number(d.choice) });
+    case 'team': return send('team', { ids: [...ui.team] });
+    case 'play': return send('play', { play: d.play });
+    case 'search': return send('search', { room: Number(d.room), forge: ui.forge });
+    case 'vote': return send('vote', { target: d.id });
+    case 'night': return send('night', { target: d.id });
+    default: return send(d.act);
+  }
+});
+$('#chatform').addEventListener('submit', e => { e.preventDefault(); const i = $('#chatin'), text = i.value.trim(); if (text) { send('chat', { text, channel: ui.chan }); i.value = ''; } });
+$('#joinform').addEventListener('submit', async e => {
+  e.preventDefault(); $('#joinbtn').disabled = true;
+  store.set('hm-name', $('#name').value.trim());
+  await join($('#name').value.trim(), $('#codein').value.trim().toUpperCase());
+  $('#joinbtn').disabled = false;
+});
+
+(async () => {
+  $('#name').value = store.get('hm-name') || '';
+  const wanted = params.get('room') || store.get('hm-room');
+  if (!(wanted && await join('', wanted, true))) showJoin();   // reclaim a seat after a reload, else ask
+})();
+</script>
+</body>
+</html>

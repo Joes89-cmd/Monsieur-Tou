@@ -1,0 +1,14 @@
+{
+  "name": "hollowmere",
+  "version": "1.0.0",
+  "description": "A hidden-traitor investigation game for 4 to 15 players.",
+  "private": true,
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test/sim.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
