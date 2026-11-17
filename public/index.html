@@ -83,6 +83,22 @@ ul.plain li { padding-left: 12px; border-left: 2px solid var(--line); font-size:
 #toast { position: fixed; left: 50%; bottom: calc(18px + env(safe-area-inset-bottom, 0px)); transform: translateX(-50%); background: var(--rust); color: #1d0906; padding: 10px 16px; border-radius: 8px; font-weight: 600; max-width: calc(100% - 32px); z-index: 5; }
 details summary { cursor: pointer; color: var(--mute); }
 #join { max-width: 440px; margin: 8vh auto 0; }
+.reading { margin: 0; padding: 22px 22px 16px; background: #efe4c8; color: #2a1c0e; border-radius: 6px; box-shadow: inset 0 0 40px rgba(110, 70, 20, .35); font: italic 1.12rem/1.65 var(--display); display: flex; flex-direction: column; gap: 2px; }
+.reading.book { font-style: normal; font-size: 1.05rem; }
+.reading.picture { padding: 10px; background: #2a1c10; }
+.reading.picture svg { width: 100%; height: auto; display: block; border: 6px solid #b08a45; border-radius: 2px; }
+.reading figcaption { margin-top: 10px; font: .8rem var(--body); color: #6a5434; font-style: normal; }
+.reading.picture figcaption { color: #c9b48a; }
+.pips { display: inline-flex; gap: 4px; vertical-align: middle; margin-left: 6px; }
+.pips i { width: 9px; height: 9px; border-radius: 50%; border: 1px solid var(--lamp); }
+.pips i.on { background: var(--lamp); }
+.ask { font: 600 1.3rem/1.35 var(--display); text-wrap: balance; }
+button.truth { border-color: var(--rust); }
+button.truth::after { content: 'the answer'; margin-left: auto; font-size: .68rem; letter-spacing: .08em; text-transform: uppercase; color: var(--rust); }
+.reasons { display: flex; flex-wrap: wrap; gap: 8px; }
+.reasons button { min-height: 38px; padding: 7px 12px; border-radius: 99px; font-size: .9rem; }
+.why { display: flex; flex-direction: column; gap: 2px; font-size: .88rem; color: var(--mute); margin-top: 4px; }
+.why b { color: var(--fog); font-weight: 600; }
 
 /* the 3D lodge */
 #scene3d { position: relative; height: clamp(280px, 50vh, 560px); margin-bottom: 16px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: #05080a; }
@@ -156,7 +172,7 @@ const store = { get(k) { try { return localStorage.getItem(k + seat); } catch (e
 let token = store.get('hm-token');
 if (!token) { token = [...crypto.getRandomValues(new Uint8Array(12))].map(b => b.toString(16).padStart(2, '0')).join(''); store.set('hm-token', token); }
 let S = null, code = null, es = null, offset = 0, stageKey = '';
-const ui = { team: new Set(), forge: false, chan: 'all' };
+const ui = { voteFor: null, reasons: new Set(), note: '', chan: 'all' };
 const cache = {};
 const put = (sel, html) => { if (cache[sel] !== html) { cache[sel] = html; $(sel).innerHTML = html; return true; } return false; };
 
@@ -215,59 +231,42 @@ const stages = {
         <button class="go" data-act="start">Begin the game</button></div>` : `<p class="mute">Waiting for ${nm(S.hostId)} to begin.</p>`}
       <details><summary>How to play</summary><div class="stack tight" style="margin-top:10px">
         <p>Most of you are <b class="moss">loyal</b>. One to three are <b class="rust">traitors</b> who know each other.</p>
-        <p><b>Quests.</b> Each round the lodge faces a quest: a cipher, a ledger riddle, a memory test, a night crossing with a chosen team, or a search of the rooms. Success fills the vault and earns a clue about who the traitors are.</p>
-        <p><b>Traitors</b> are whispered the answers so they can blend in, and can quietly sabotage: answer wrong, wreck the crossing, or forge the evidence.</p>
-        <p><b>Council.</b> Talk it through, then vote. The exiled member's role is revealed.</p>
+        <p><b>Readings.</b> Every round opens with a few lines of a book, a poem, or a picture. Read it, it is taken away, and everyone answers one question on it alone. They start gentle and end fiendish. Too many wrong answers and the reading fails; a pass fills the vault and earns a clue about who the traitors are.</p>
+        <p><b>Traitors</b> are always handed the right answer. They choose: give it and blend in, or answer wrong to sink the reading. Only the number of wrong answers is ever announced.</p>
+        <p><b>Council.</b> Talk it through, then vote, and give your reason. Everyone sees who voted for whom and why. The exiled member's role is revealed.</p>
         <p><b>Winning.</b> The loyal win by exiling every traitor. The traitors win if they equal the loyal in number, or survive the final round.</p></div></details>`;
   },
   roles() {
     const t = S.you.role === 'traitor', mates = S.players.filter(p => p.role === 'traitor' && p.id !== S.you.id);
     return `<p class="label">Your secret role</p><h2 class="${t ? 'rust' : 'moss'}" style="color:inherit"><span class="${t ? 'rust' : 'moss'}">${t ? 'You are a traitor' : 'You are loyal'}</span></h2>
-      <p>${t ? `Empty the vault without being caught. ${mates.length ? `Your fellow traitor${mates.length > 1 ? 's are' : ' is'} <b>${names(mates.map(p => p.id))}</b>.` : 'You work alone.'} During quests you will be whispered the answers: use them to look helpful, or sabotage when you can hide it.`
-        : 'Help the lodge through its quests, study the clues in your notebook, and work out who is lying. Keep your screen to yourself.'}</p>
+      <p>${t ? `Empty the vault without being caught. ${mates.length ? `Your fellow traitor${mates.length > 1 ? 's are' : ' is'} <b>${names(mates.map(p => p.id))}</b>.` : 'You work alone.'} At every reading you will be handed the right answer. Give it to look helpful, or answer wrong to sink the reading when you can hide it.`
+        : 'Read carefully each round, study the clues in your notebook, and work out who is lying. Keep your screen to yourself.'}</p>
       <p class="mute">${S.maxRounds} rounds at most.</p>${cont('I understand')}`;
   },
   quest() {
-    const q = S.quest, head = `<p class="label">Round ${S.round} quest</p><h2>${q.title}</h2>`;
+    const q = S.quest, pips = `<span class="pips" aria-label="Difficulty ${q.level} of 5">${[1, 2, 3, 4, 5].map(i => `<i class="${i <= q.level ? 'on' : ''}"></i>`).join('')}</span>`;
+    const head = `<p class="label">Round ${S.round} reading · ${q.levelName}${pips}</p><h2>${esc(q.title)}</h2>`;
+    if (q.stage === 'study') {
+      const body = q.form === 'picture' ? q.svg : q.lines.map(l => `<span>${esc(l)}</span>`).join('');
+      return head + `<p class="mute">Read carefully. When the time runs out it is taken away, and everyone answers one question on it alone.</p>
+        <figure class="reading ${q.form}">${body}<figcaption>${esc(q.source)}</figcaption></figure>` + hostSkip();
+    }
     if (!S.you.alive) return head + outNote() + waitingOn();
-    if (q.kind === 'expedition') {
-      if (q.stage === 'team') {
-        if (q.leader !== S.you.id) return head + `<p><b>${nm(q.leader)}</b> leads tonight and is choosing ${q.size} members to carry supplies across the marsh. If anyone on the team sabotages a crate, the quest fails, and only the number of sabotaged crates is announced.</p>`;
-        return head + `<p>You lead tonight. Choose <b>${q.size}</b> members to make the crossing (you may include yourself). One traitor on the team can ruin it.</p>
-          <div class="choices">${living().map(p => `<button data-act="toggle" data-id="${p.id}" class="${ui.team.has(p.id) ? 'on' : ''}">${seal(p)}<span>${esc(p.name)}</span></button>`).join('')}</div>
-          <button class="go" data-act="team" ${ui.team.size === q.size ? '' : 'disabled'}>Send these ${q.size} (${ui.team.size} chosen)</button>`;
-      }
-      const on = q.team.includes(S.you.id);
-      return head + `<p>Crossing tonight: <b>${names(q.team)}</b>, chosen by ${nm(q.leader)}.</p>` +
-        (!on ? '<p class="mute">You stay at the lodge and wait for word.</p>' : q.played ? '<p class="mute">Your crate is on the boat.</p>'
-          : `<div class="choices"><button data-act="play" data-play="secure">Carry your crate safely</button>${q.canSabotage ? '<button class="danger" data-act="play" data-play="sabotage">Sabotage your crate</button>' : ''}</div>
-             ${q.canSabotage ? whisper('Loyal members see only the first button. A sabotage fails the quest, but everyone on the team becomes a suspect, you included.') : ''}`) + waitingOn();
-    }
-    if (q.kind === 'search') {
-      return head + `<p>Evidence against the traitors is hidden in one room. Pick a room to search. Those who find it each get a private clue in their notebook. Afterwards everyone sees who searched where.</p>
-        <div class="choices">${q.rooms.map((r, i) => `<button data-act="search" data-room="${i}" class="${q.picked === i ? 'on' : ''}" ${q.picked !== undefined ? 'disabled' : ''}>${r}</button>`).join('')}</div>
-        ${q.hot !== undefined ? whisper(`The evidence is in the <b>${q.rooms[q.hot]}</b>. ${q.picked === undefined ? `<br><button data-act="forge" class="${ui.forge ? 'on' : ''}" style="margin-top:8px">${ui.forge ? 'Forging: on' : 'Forging: off'}</button> If you search that room with forging on, everyone who finds the evidence gets a false clue naming only loyal members.` : ''}`) : ''}
-        ${q.picked !== undefined ? waitingOn() : ''}`;
-    }
-    if (q.stage === 'study') return head + `<p>Memorise the study table. It will be cleared in a few seconds.</p><div class="items">${q.study.map(i => `<div>${i}</div>`).join('')}</div>`;
-    return head + `<p>${esc(q.prompt)}</p>
-      <div class="choices">${q.options.map((o, i) => `<button data-act="answer" data-choice="${i}" class="${q.picked === i ? 'on' : ''}" ${q.picked !== undefined ? 'disabled' : ''}>${esc(o)}</button>`).join('')}</div>
-      ${q.edge !== undefined ? whisper(`The right answer is <b>${esc(q.options[q.edge])}</b>. Answer it to blend in, or answer wrong to hurt the quest. Only the number of wrong answers is announced.`) : ''}
-      <p class="mute">Everyone answers alone. No conferring.</p>${q.picked !== undefined ? waitingOn() : ''}`;
+    const t = q.edge !== undefined;
+    return head + `<p class="label">The question</p><p class="ask">${esc(q.prompt)}</p>
+      <div class="choices">${q.options.map((o, i) => `<button data-act="answer" data-choice="${i}" class="${q.picked === i ? 'on' : ''} ${t && i === q.edge ? 'truth' : ''}" ${q.picked !== undefined ? 'disabled' : ''}>${esc(o)}</button>`).join('')}</div>
+      ${t ? whisper(`The right answer is <b>${esc(q.options[q.edge])}</b>. The choice is yours: give it and blend in, or pick a wrong one to sink the reading. Only the number of wrong answers is announced.`) : ''}
+      <p class="mute">Answer alone. No conferring.</p>${q.picked !== undefined ? waitingOn() : ''}`;
   },
   qresult() {
-    const r = S.last; let h = `<p class="label">Round ${S.round} result</p><h2>${r.title}</h2>`;
-    if (r.kind === 'search') {
-      h += `<p class="big ${r.found ? 'moss' : 'rust'}">${r.found ? 'Evidence found' : 'Evidence missed'}</p><p>It was hidden in the <b>${r.rooms[r.hot]}</b>.</p>
-        <ul class="plain">${r.rooms.map((room, i) => { const ids = Object.keys(r.picks).filter(id => r.picks[id] === i); return `<li><b class="${i === r.hot ? 'lamp' : ''}">${room}</b>: ${ids.length ? names(ids) : 'nobody'}</li>`; }).join('')}</ul>
-        ${r.yourClue ? `<div class="card"><span class="label lamp">Your private find</span><br>${esc(r.yourClue)}</div>` : r.found ? '<p class="mute">Those who searched the right room each hold a private clue. Ask them what it says, and decide whether you believe them.</p>' : ''}`;
-    } else {
-      h += `<p class="big ${r.success ? 'moss' : 'rust'}">${r.success ? 'Quest passed' : 'Quest failed'}</p>`;
-      if (r.kind === 'expedition') h += `<p>${names(r.team)} made the crossing, chosen by ${nm(r.leader)}. ${r.sabotages ? `<b class="rust">${r.sabotages} crate${r.sabotages > 1 ? 's were' : ' was'} sabotaged.</b>` : 'Every crate arrived intact.'}</p>`;
-      else h += `<p>The answer was <b>${esc(r.answerText)}</b>. <b>${r.wrong}</b> of ${r.total} answered wrongly; the lodge could afford ${r.allowed}.</p>${r.youCorrect === undefined ? '' : `<p class="mute">Your own answer was ${r.youCorrect ? 'right' : 'wrong'}.</p>`}`;
-      h += r.clue ? `<div class="card"><span class="label lamp">Clue earned</span><br>${esc(r.clue)}</div>` : '<p class="mute">No clue tonight, and 100 gold is missing from the vault.</p>';
-    }
-    return h + `<p class="mute">${S.councilNext ? 'The council meets next.' : 'No council this round. The next quest follows.'}</p>` + cont() + hostSkip();
+    const r = S.last;
+    return `<p class="label">Round ${S.round} result · ${r.levelName}</p><h2>${esc(r.title)}</h2>
+      <p class="big ${r.success ? 'moss' : 'rust'}">${r.success ? 'Reading passed' : 'Reading failed'}</p>
+      <p>${esc(r.prompt)} The answer was <b>${esc(r.answerText)}</b>.</p>
+      <p><b>${r.wrong}</b> of ${r.total} answered wrongly; the lodge could afford ${r.allowed}.</p>
+      ${r.youCorrect === undefined ? '' : `<p class="mute">Your own answer was ${r.youCorrect ? 'right' : 'wrong'}.</p>`}
+      ${r.clue ? `<div class="card"><span class="label lamp">Clue earned</span><br>${esc(r.clue)}</div>` : '<p class="mute">No clue this round, and 100 gold is missing from the vault.</p>'}
+      <p class="mute">${S.councilNext ? 'The council meets next.' : 'No council this round. The next reading follows.'}</p>` + cont() + hostSkip();
   },
   discuss() {
     return `<p class="label">Round ${S.round} council</p><h2>Who do you trust?</h2>
@@ -279,8 +278,16 @@ const stages = {
     const head = `<p class="label">Round ${S.round} vote</p><h2>Cast your vote</h2>`;
     if (!S.you.alive) return head + outNote() + waitingOn();
     if (S.voted) return head + `<p>You voted ${S.voted === 'none' ? 'to exile no one' : 'to exile <b>' + nm(S.voted) + '</b>'}.</p>` + waitingOn();
-    return head + `<p>The member with the most votes is exiled and their role revealed. ${S.nightRule ? 'With more than 6 at the table a tie is settled by drawing lots.' : 'A tie exiles no one.'}</p>
-      <div class="choices">${living().filter(p => p.id !== S.you.id).map(p => personBtn(p, 'vote')).join('')}${S.nightRule ? '' : '<button data-act="vote" data-id="none">Exile no one</button>'}</div>`;
+    if (!ui.voteFor || !P(ui.voteFor) || !P(ui.voteFor).alive) {
+      ui.voteFor = null;
+      return head + `<p>Who do you believe is a traitor? The member with the most votes is exiled and their role revealed. ${S.nightRule ? 'With more than 6 at the table a tie is settled by drawing lots.' : 'A tie exiles no one.'}</p>
+        <div class="choices">${living().filter(p => p.id !== S.you.id).map(p => personBtn(p, 'pickvote')).join('')}${S.nightRule ? '' : '<button data-act="vote" data-id="none">Exile no one</button>'}</div>` + waitingOn();
+    }
+    const ok = ui.reasons.size || ui.note.trim();
+    return head + `<p>You are voting to exile <b>${nm(ui.voteFor)}</b>. Why? Pick one or two reasons; everyone will see them.</p>
+      <div class="reasons">${S.reasons.map((r, i) => `<button data-act="reason" data-i="${i}" class="${ui.reasons.has(i) ? 'on' : ''}" aria-pressed="${ui.reasons.has(i)}">${esc(r)}</button>`).join('')}</div>
+      <label class="stack tight" for="votenote"><span class="label">Or in your own words (optional)</span><input type="text" id="votenote" maxlength="80" value="${esc(ui.note)}" autocomplete="off"></label>
+      <div class="row"><button class="go" id="castvote" data-act="castvote" ${ok ? '' : 'disabled'}>Vote to exile ${nm(ui.voteFor)}</button><button data-act="unvote">Choose someone else</button></div>` + waitingOn();
   },
   verdict() { return `<p class="label">Round ${S.round} verdict</p>` + verdictHtml() + `<p class="mute">${S.nightRule ? 'Night falls. With more than 6 still here, the traitors will strike.' : 'The lodge sleeps safely tonight.'}</p>` + cont() + hostSkip(); },
   night() {
@@ -311,26 +318,28 @@ function verdictHtml() {
   return `<h2>${v.exiled ? `${nm(v.exiled)} is exiled` : 'Nobody is exiled'}</h2>
     ${v.exiled ? `<p class="big ${v.role === 'traitor' ? 'rust' : 'moss'}">${v.role === 'traitor' ? 'A traitor' : 'A loyal member'}</p>` : '<p>The council could not agree.</p>'}
     ${v.lot ? '<p class="mute">The vote was tied, so lots were drawn.</p>' : ''}
-    <ul class="plain">${Object.entries(groups).sort((a, b) => b[1].length - a[1].length).map(([t, vs]) => `<li><b>${t === 'none' ? 'Exile no one' : nm(t)}</b> (${vs.length}): ${names(vs)}</li>`).join('')}</ul>`;
+    <ul class="plain">${Object.entries(groups).sort((a, b) => b[1].length - a[1].length).map(([t, vs]) => `<li><b>${t === 'none' ? 'Exile no one' : nm(t)}</b> (${vs.length})<div class="why">${vs.map(id => { const why = (v.reasons && v.reasons[id]) || []; return `<span><b>${nm(id)}</b>${why.length ? ': ' + esc(why.join('; ')) : ''}</span>`; }).join('')}</div></li>`).join('')}</ul>`;
 }
 
 /* ---------- render ---------- */
-const PHASES = { lobby: 'Gathering', roles: 'Roles', quest: 'Quest', qresult: 'Result', discuss: 'Council', vote: 'Vote', verdict: 'Verdict', night: 'Night', dawn: 'Dawn', over: 'Game over' };
+const PHASES = { lobby: 'Gathering', roles: 'Roles', quest: 'Reading', qresult: 'Result', discuss: 'Council', vote: 'Vote', verdict: 'Verdict', night: 'Night', dawn: 'Dawn', over: 'Game over' };
 function render() {
   if (!S) return;
   $('#join').hidden = true; $('#game').hidden = false;
   window.__S = S; if (window.Lodge) window.Lodge.update(S);
   const key = `${S.round}-${S.phase}-${S.quest ? S.quest.stage : ''}`;
-  if (key !== stageKey) { stageKey = key; ui.team = new Set(); ui.forge = false; window.scrollTo({ top: 0 }); }
+  if (key !== stageKey) { stageKey = key; ui.voteFor = null; ui.reasons = new Set(); ui.note = ''; window.scrollTo({ top: 0 }); }
   $('#b-code').textContent = S.code;
   $('#b-round').innerHTML = S.round ? `<span class="label">Round</span> <b>${S.round}/${S.maxRounds}</b> <span class="mute">${PHASES[S.phase]}</span>` : `<span class="mute">${PHASES[S.phase]}</span>`;
   $('#b-vault').textContent = S.vault + ' gold';
+  const ae = document.activeElement, fid = ae && ae.id, caret = ae && ae.selectionStart;
   put('#stage', stages[S.phase]());
+  if (fid && document.getElementById(fid) && document.getElementById(fid) !== ae) { const el = document.getElementById(fid); el.focus(); try { el.setSelectionRange(caret, caret); } catch (e) {} }
   put('#roster', S.players.map(p => `<div class="member ${p.alive ? '' : 'out'}">${seal(p)}<div class="who"><b>${esc(p.name)}</b>${p.id === S.you.id ? ' <span style="display:inline" class="lamp">(you)</span>' : ''}<span>${title(p)}${p.bot ? ' · resident' : p.online ? '' : ' · away'}${p.fate ? ' · ' + p.fate : ''}</span></div>
     ${S.waiting.includes(p.id) ? '<span class="dot" title="Still deciding"></span>' : ''}${p.id === S.hostId ? '<span class="tag">host</span>' : ''}${p.role === 'traitor' ? '<span class="tag t">traitor</span>' : p.role === 'loyal' ? '<span class="tag l">loyal</span>' : ''}</div>`).join(''));
   const role = S.you.role ? `<p>You are <b class="${S.you.role === 'traitor' ? 'rust' : 'moss'}">${S.you.role === 'traitor' ? 'a traitor' : 'loyal'}</b>.</p>` : '';
   const li = a => a.map(c => `<li><span class="mute">Round ${c.round}.</span> ${esc(c.text)}</li>`).join('');
-  put('#notebook', role + (S.clues.length ? `<p class="label">Clues everyone has</p><ul class="plain">${li(S.clues)}</ul>` : '<p class="mute">Clues earned from quests will be kept here.</p>') +
+  put('#notebook', role + (S.clues.length ? `<p class="label">Clues everyone has</p><ul class="plain">${li(S.clues)}</ul>` : '<p class="mute">Clues earned from readings will be kept here.</p>') +
     (S.you.notes.length ? `<p class="label lamp">Only you know</p><ul class="plain">${li(S.you.notes)}</ul>` : '') +
     (S.events.length ? `<details><summary>Chronicle of the game</summary><ul class="plain" style="margin-top:8px">${li(S.events)}</ul></details>` : ''));
   const canT = !!S.tchat && S.you.role === 'traitor' && !['lobby', 'over'].includes(S.phase);
@@ -354,20 +363,20 @@ document.addEventListener('click', e => {
   const b = e.target.closest('[data-act]'); if (!b || b.disabled) return;
   const d = b.dataset;
   switch (d.act) {
-    case 'toggle': ui.team.has(d.id) ? ui.team.delete(d.id) : ui.team.add(d.id); return render();
-    case 'forge': ui.forge = !ui.forge; return render();
+    case 'pickvote': ui.voteFor = d.id; ui.reasons = new Set(); return render();
+    case 'unvote': ui.voteFor = null; return render();
+    case 'reason': { const i = Number(d.i); if (ui.reasons.has(i)) ui.reasons.delete(i); else { if (ui.reasons.size >= 2) ui.reasons.delete([...ui.reasons][0]); ui.reasons.add(i); } return render(); }
+    case 'castvote': return send('vote', { target: ui.voteFor, reasons: [...ui.reasons], note: ui.note });
     case 'chan': ui.chan = d.chan; return render();
     case 'char': return send('char', { char: Number(d.char) });
     case 'seats': return send('seats', { seats: Number(d.seats) });
     case 'answer': return send('answer', { choice: Number(d.choice) });
-    case 'team': return send('team', { ids: [...ui.team] });
-    case 'play': return send('play', { play: d.play });
-    case 'search': return send('search', { room: Number(d.room), forge: ui.forge });
     case 'vote': return send('vote', { target: d.id });
     case 'night': return send('night', { target: d.id });
     default: return send(d.act);
   }
 });
+document.addEventListener('input', e => { if (e.target.id === 'votenote') { ui.note = e.target.value; const b = $('#castvote'); if (b) b.disabled = !(ui.reasons.size || ui.note.trim()); } });
 $('#chatform').addEventListener('submit', e => { e.preventDefault(); const i = $('#chatin'), text = i.value.trim(); if (text) { send('chat', { text, channel: ui.chan }); i.value = ''; } });
 $('#joinform').addEventListener('submit', async e => {
   e.preventDefault(); $('#joinbtn').disabled = true;

@@ -604,31 +604,52 @@ function spotLabel(text, pos, hot) {
   layer.appendChild(el);
   spotLabels.push({ el, pos: pos.clone().setY(1.0) });
 }
+function wrapLines(g, text, width) {
+  const out = [];
+  for (const para of text) {
+    let line = '';
+    for (const word of para.split(' ')) { const t = line ? line + ' ' + word : word; if (g.measureText(t).width > width && line) { out.push(line); line = word; } else line = t; }
+    out.push(line);
+  }
+  return out;
+}
+/* an open book on the table, its right page carrying the passage */
+function openBook(q) {
+  const tex = canvasTex(1024, 640, (g, w, h) => {
+    g.fillStyle = '#e8dcbc'; g.fillRect(0, 0, w, h);
+    const e = g.createLinearGradient(w / 2 - 40, 0, w / 2 + 40, 0); e.addColorStop(0, 'rgba(0,0,0,0)'); e.addColorStop(0.5, 'rgba(70,40,10,.45)'); e.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = e; g.fillRect(w / 2 - 40, 0, 80, h);
+    g.fillStyle = '#3a2412'; g.textAlign = 'center';
+    g.font = 'bold 40px Georgia, serif'; wrapLines(g, [q.title], 400).forEach((l, i) => g.fillText(l, w / 4, 230 + i * 48));
+    g.font = 'italic 24px Georgia, serif'; wrapLines(g, [q.source], 400).forEach((l, i) => g.fillText(l, w / 4, 360 + i * 30));
+    g.textAlign = 'left'; g.font = (q.form === 'poem' ? 'italic ' : '') + '25px Georgia, serif';
+    const lines = wrapLines(g, q.lines, 430), lh = Math.min(36, 560 / lines.length);
+    lines.forEach((l, i) => g.fillText(l, w / 2 + 40, 70 + i * lh));
+    speckle(g, w, h, 0.05, 4000);
+  });
+  mesh(box(0.95, 0.05, 0.62), std(0x5a1e1c, 0.6), 0, 0.865, 0.35, props);
+  const pages = mesh(new THREE.PlaneGeometry(0.92, 0.58), std(0xffffff, 0.9, { map: tex }), 0, 0.893, 0.35, props, false);
+  pages.rotation.x = -Math.PI / 2;
+}
+/* the painting from the reading, laid on the table */
+function laidPicture(svg) {
+  const c = document.createElement('canvas'); c.width = 960; c.height = 600;
+  const tex = new THREE.CanvasTexture(c); tex.colorSpace = THREE.SRGBColorSpace; tex.anisotropy = aniso;
+  const img = new Image();
+  img.onload = () => { c.getContext('2d').drawImage(img, 0, 0, 960, 600); tex.needsUpdate = true; };
+  img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+  mesh(box(1.16, 0.04, 0.76), M.brass, 0, 0.86, 0.3, props);
+  const m = mesh(new THREE.PlaneGeometry(1.08, 0.68), std(0xffffff, 0.8, { map: tex }), 0, 0.882, 0.3, props, false);
+  m.rotation.x = -Math.PI / 2;
+}
 function setProps(v) {
   clearProps();
   const q = v.quest;
-  if (v.phase === 'quest' && q) {
-    if (q.kind === 'cipher') { const m = /“(.+?)”/.exec(q.prompt || ''); paper(paperTex(['A sealed note', '', 'cipher wheel set'], m ? m[1] : '· · ·'), 0.45, 0.35, 0.3); mesh(cyl(0.035, 0.035, 0.012, 16), std(0x8a1a1a, 0.4), 0.55, 0.85, 0.12, props); }
-    if (q.kind === 'sequence') { const m = /lists (.+?) and then/.exec(q.prompt || ''); const nums = m ? m[1].split(',').map(s => s.trim()) : []; paper(paperTex(['The vault ledger', ...nums, '· torn ·']), 0.25, 0.4, -0.2); paper(paperTex(['', 'deposits', 'withdrawals']), -0.22, 0.42, -0.2); }
-    if (q.kind === 'observe') {
-      if (q.stage === 'study' && q.study) q.study.forEach((name, i) => {
-        const a = i / q.study.length * TAU + 0.3, key = Object.keys(ITEM_SHAPES).find(k => name.includes(k)) || 'matchbox';
-        const [geo, mat] = ITEM_SHAPES[key];
-        const m = mesh(geo.clone(), mat, Math.cos(a) * 0.95, 0.88, Math.sin(a) * 0.95, props);
-        if (geo.type === 'TorusGeometry') m.rotation.x = Math.PI / 2;
-        if (geo.type === 'CapsuleGeometry' || key === 'key' || key === 'tin' || key === 'feather') m.rotation.z = Math.PI / 2;
-        m.rotation.y = Math.random() * TAU;
-      });
-      else { const cover = mesh(new THREE.SphereGeometry(1.05, 40, 16, 0, TAU, 0, Math.PI / 2), M.cloth, 0, 0.84, 0, props); cover.scale.y = 0.13; }
-    }
-    if (q.kind === 'expedition') {
-      paper(paperTex(['The Night Crossing', 'lodge ~~~~ ferry', '~~~ marsh ~~~', 'x  far bank']), 0, 0.45, 0, 0.6, 0.45);
-      for (const [x, z, r] of [[-1.3, 6.2, 0.2], [-0.8, 6.3, -0.1], [1.2, 6.2, 0.3]]) { const cr = mesh(box(0.45, 0.4, 0.45), std(0x6a4a2a, 0.85, { map: tableTex }), x, 0.2, z, props); cr.rotation.y = r; }
-      lantern(1.6, 5.9, false);
-    }
-    if (q.kind === 'search') q.rooms.forEach((name, i) => { lantern(SPOTS[i].x, SPOTS[i].z, false); spotLabel(name, SPOTS[i], q.hot === i); });
+  if (v.phase === 'quest' && q && q.kind === 'reading') {
+    if (q.stage === 'study') { if (q.form === 'picture' && q.svg) laidPicture(q.svg); else if (q.lines) openBook(q); }
+    else if (q.form === 'picture') { const cover = mesh(box(1.16, 0.05, 0.76), M.cloth, 0, 0.865, 0.3, props); cover.rotation.y = 0.1; }
+    else { const b = mesh(box(0.48, 0.08, 0.62), std(0x5a1e1c, 0.6), 0, 0.88, 0.35, props); b.rotation.y = 0.25; }
   }
-  if (v.phase === 'qresult' && v.last && v.last.kind === 'search') v.last.rooms.forEach((name, i) => { lantern(SPOTS[i].x, SPOTS[i].z, i === v.last.hot); spotLabel(i === v.last.hot ? `${name} · evidence` : name, SPOTS[i], i === v.last.hot); });
 }
 
 /* ---------------- mist for vanishings ---------------- */
@@ -672,13 +693,25 @@ function update(v) {
     }
   });
   const key = `${v.round}-${v.phase}-${v.quest ? v.quest.stage : ''}`;
-  if (key !== phaseKey) { phaseKey = key; phaseT = now; setProps(v); }
+  if (key !== phaseKey) {
+    phaseKey = key; phaseT = now; setProps(v);
+    // at the verdict each voter says why, in a bubble over their head
+    if (v.phase === 'verdict' && v.verdict && v.verdict.reasons) {
+      let k = 0;
+      for (const p of v.players) {
+        const why = v.verdict.reasons[p.id], c = chars.get(p.id);
+        if (!c || c.gone || !why || !why.length) continue;
+        c.lbl.querySelector('.bub').textContent = why.join('; ');
+        c.bubbleFrom = now + 600 + k * 2100; c.bubbleUntil = c.bubbleFrom + 3400; c.talkUntil = c.bubbleUntil; k++;
+      }
+    }
+  }
   if (lastChat === undefined || firstView) lastChat = v.chat.length ? v.chat[v.chat.length - 1].id : null;
   else {
     const start = lastChat ? v.chat.findIndex(m => m.id === lastChat) + 1 : 0;
     for (const m of v.chat.slice(start)) {
       const c = chars.get(m.from);
-      if (c && !c.gone) { const b = c.lbl.querySelector('.bub'); b.textContent = m.text.length > 90 ? m.text.slice(0, 88) + '…' : m.text; c.bubbleUntil = now + 6000; c.talkUntil = now + 3200; speaker = c; speakT = now; }
+      if (c && !c.gone) { const b = c.lbl.querySelector('.bub'); b.textContent = m.text.length > 90 ? m.text.slice(0, 88) + '…' : m.text; c.bubbleFrom = 0; c.bubbleUntil = now + 6000; c.talkUntil = now + 3200; speaker = c; speakT = now; }
     }
     if (v.chat.length) lastChat = v.chat[v.chat.length - 1].id;
   }
@@ -700,22 +733,10 @@ function direct(c, el, now) {
     case 'lobby': pose = c.greetUntil > now && !c.path.length ? 'wave' : 'idle'; break;
     case 'roles': pose = 'idle'; if (p.id !== me) look = posOf(me); break;
     case 'quest':
-      if (q.kind === 'expedition') {
-        if (q.stage === 'team') { pose = p.id === q.leader ? 'think' : 'idle'; if (p.id !== q.leader) look = posOf(q.leader); }
-        else { const k = q.team.indexOf(p.id); if (k >= 0) { dest = doorSpot(k, q.team.length); pose = waiting ? 'think' : 'fold'; } else look = V(0, 1.4, 5.5); }
-      } else if (q.kind === 'search') {
-        if (p.id === me && q.picked !== undefined) dest = spotPos(q.picked, 0, 1);
-        pose = waiting ? 'think' : 'idle';
-      } else { pose = q.stage === 'study' ? 'lean' : waiting ? (c.ci % 2 ? 'think' : 'lean') : 'fold'; look = TABLE; }
+      pose = q.stage === 'study' ? 'lean' : waiting ? 'think' : 'fold'; look = TABLE;
       break;
     case 'qresult': {
-      const r = S.last;
-      if (r.kind === 'search') {
-        const idx = r.picks[p.id];
-        if (idx !== undefined) { const grp = Object.keys(r.picks).filter(id => r.picks[id] === idx); dest = spotPos(idx, grp.indexOf(p.id), grp.length); }
-        pose = el < 3000 && !c.path.length ? (idx === r.hot ? 'cheer' : r.found ? 'idle' : 'slump') : 'idle';
-        if (r.found && idx !== r.hot) look = SPOTS[r.hot].clone().setY(1.4);
-      } else pose = el < 2800 ? (r.success ? 'cheer' : 'slump') : 'idle';
+      pose = el < 2800 ? (S.last.success ? 'cheer' : 'slump') : 'idle';
       break;
     }
     case 'discuss': pose = c.talkUntil > now ? 'talk' : 'idle'; break;
@@ -954,7 +975,7 @@ function frame(tms) {
     c.lbl.hidden = false;
     c.lbl.style.transform = `translate(${(headPos.x * 0.5 + 0.5) * w}px,${(-headPos.y * 0.5 + 0.5) * h}px) translate(-50%,-100%)`;
     c.lbl.style.zIndex = String(1000 - Math.round(headPos.z * 1000));
-    c.lbl.querySelector('.bub').hidden = c.bubbleUntil < now;
+    c.lbl.querySelector('.bub').hidden = c.bubbleUntil < now || (c.bubbleFrom || 0) > now;
     const info = c.lbl.querySelector('i'), focused = c.focusUntil > now;
     if (focused && S) info.textContent = `the ${S.characters[c.p.char]}${c.p.bot ? ' · resident' : ''}${c.p.role === 'traitor' ? ' · traitor' : ''}`;
     info.hidden = !focused;

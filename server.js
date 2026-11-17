@@ -18,13 +18,8 @@ const CHARACTERS = [
   { title: 'Stablehand', bot: 'Wren' }, { title: 'Astronomer', bot: 'Leopold' },
   { title: 'Beekeeper', bot: 'Hester' },
 ];
-const QUESTS = ['cipher', 'sequence', 'observe', 'expedition', 'search'];
-const ROOMS = ['Library', 'Boathouse', 'Cellar', 'Aviary', 'Chapel', 'Greenhouse', 'Attic', 'Kitchen'];
-const WORDS = ['LANTERN', 'MARSHES', 'CELLARS', 'FALCONS', 'ORCHARD', 'COMPASS', 'HARVEST', 'WHISPER',
-  'CANDLES', 'BRAMBLE', 'THISTLE', 'FERRIES', 'VINTAGE', 'SHADOWS', 'TRINKET', 'KESTREL'];
-const ITEMS = ['brass key', 'ink bottle', 'pocket watch', 'folded map', 'wax seal', 'silver spoon', 'reading glasses',
-  'candle stub', 'ferry ticket', 'dried thistle', 'chess knight', 'letter opener', 'tin whistle', 'magnifying lens',
-  'glove', 'matchbox', 'compass', 'hip flask', 'playing card', 'feather quill'];
+const { makeReading, levelFor, REASONS } = require('./readings');
+const FORMS = ['book', 'poem', 'picture'];
 
 const rooms = new Map();
 const rnd = n => Math.floor(Math.random() * n);
@@ -84,15 +79,14 @@ function startGame(room) {
   const traitors = n <= 7 ? 1 : n <= 12 ? 2 : 3;
   shuffle(room.players).forEach((p, i) => { p.role = i < traitors ? 'traitor' : 'loyal'; p.alive = true; p.fate = null; p.notes = []; });
   Object.assign(room, { round: 0, maxRounds: n <= 6 ? 6 : 10, vault: 0, stolen: 0, clues: [], events: [], sus: {}, winner: null,
-    deck: [], leaderIdx: rnd(n), chat: [], tchat: [], last: null, quest: null, council: null, night: null, dawn: null });
+    forms: [], used: new Set(), named: new Set(), chat: [], tchat: [], last: null, quest: null, council: null, night: null, dawn: null });
   stage(room, 'roles', 30, readyPending(room), () => nextRound(room));
 }
 function nextRound(room) {
   if (room.round >= room.maxRounds) return endGame(room, 'traitor', 'The last night passed with a traitor still inside. By morning the vault is empty.');
   room.round++;
-  if (!room.deck.length) room.deck = shuffle(QUESTS);
-  const kind = room.deck.pop();
-  if (kind === 'expedition') startExpedition(room); else if (kind === 'search') startSearch(room); else startPuzzle(room, kind);
+  if (!room.forms.length) room.forms = shuffle(FORMS);
+  startReading(room, room.forms.pop());
 }
 function checkWin(room) {
   const t = alive(room).filter(p => p.role === 'traitor').length, l = alive(room).length - t;
@@ -124,7 +118,7 @@ function reward(room, success) {
   if (!success) { room.stolen += 100; return; }
   room.vault += 100;
   const clue = makeClue(room, true);
-  for (const id of clue.ids) room.sus[id] = (room.sus[id] || 0) + 1.5 / clue.ids.length;
+  for (const id of clue.ids) { room.sus[id] = (room.sus[id] || 0) + 1.5 / clue.ids.length; room.named.add(id); }
   room.clues.push({ round: room.round, text: clue.text });
   room.last.clue = clue.text;
 }
@@ -133,112 +127,27 @@ function toResult(room, line) {
   stage(room, 'qresult', 40, readyPending(room), () => councilDue(room) ? startCouncil(room) : nextRound(room));
 }
 
-/* ---------- quests: three puzzles ---------- */
-function makePuzzle(kind) {
-  if (kind === 'cipher') {
-    const word = pick(WORDS), shift = 3 + rnd(9);
-    const enc = [...word].map(c => String.fromCharCode((c.charCodeAt(0) - 65 + shift) % 26 + 65)).join('');
-    const options = shuffle([word, ...shuffle(WORDS.filter(w => w !== word)).slice(0, 3)]);
-    return { title: 'The Sealed Note', time: 45, options, answer: options.indexOf(word),
-      prompt: `A sealed note reads “${enc}”. The cipher wheel is set so that A is written as ${String.fromCharCode(65 + shift)}. What does the note say?` };
-  }
-  if (kind === 'sequence') {
-    const a = 2 + rnd(8), x = 2 + rnd(5), y = 1 + rnd(6);
-    const gens = [
-      () => { const s = [a]; for (let i = 0; i < 5; i++) s.push(s[i] + (i % 2 ? y + 3 : x)); return s; },
-      () => { const s = [a]; for (let i = 0; i < 5; i++) s.push(s[i] * 2 - (x - 2)); return s; },
-      () => Array.from({ length: 6 }, (_, i) => (i + x) * (i + x) + y),
-      () => { const s = [a, a + x]; for (let i = 2; i < 6; i++) s.push(s[i - 1] + s[i - 2]); return s; },
-      () => { const s = [60 + a * 3]; for (let i = 0; i < 5; i++) s.push(s[i] - (i + 1) * x); return s; },
-    ];
-    const s = pick(gens)(), ans = s[5], wrong = new Set();
-    while (wrong.size < 3) { const w = ans + pick([-6, -4, -3, -2, -1, 1, 2, 3, 4, 6]); if (w !== ans) wrong.add(w); }
-    const options = shuffle([ans, ...wrong]).map(String);
-    return { title: 'The Vault Ledger', time: 45, options, answer: options.indexOf(String(ans)),
-      prompt: `The vault ledger lists ${s.slice(0, 5).join(', ')} and then a torn corner. Which entry comes next?` };
-  }
-  const shown = shuffle(ITEMS).slice(0, 8), absent = pick(ITEMS.filter(i => !shown.includes(i)));
-  const options = shuffle([absent, ...shuffle(shown).slice(0, 3)]);
-  return { title: 'The Study Table', time: 30, study: shown, studyTime: 12, options, answer: options.indexOf(absent),
-    prompt: 'Which of these was NOT on the study table?' };
-}
-function startPuzzle(room, kind) {
-  const q = room.quest = Object.assign(makePuzzle(kind), { kind, answers: {} });
-  const ask = () => {
+/* ---------- the reading: a passage or picture, then a question on it ---------- */
+function startReading(room, form) {
+  const level = levelFor(room.round, room.maxRounds);
+  const q = room.quest = Object.assign(makeReading(level, form, room.used), { kind: 'reading', answers: {}, stage: 'study' });
+  // everyone reads at the same time; nobody can skip ahead
+  stage(room, 'quest', q.read, () => ['-'], () => {
     q.stage = 'answer';
-    stage(room, 'quest', q.time, () => alive(room).filter(p => !(p.id in q.answers)).map(p => p.id), () => resolvePuzzle(room), b => {
+    stage(room, 'quest', 35, () => alive(room).filter(p => !(p.id in q.answers)).map(p => p.id), () => resolveReading(room), b => {
       const wrongPick = () => pick(q.options.map((_, i) => i).filter(i => i !== q.answer));
-      q.answers[b.id] = (b.role === 'traitor' ? Math.random() < 0.45 : Math.random() > 0.88) ? wrongPick() : q.answer;
+      const slip = b.role === 'traitor' ? 0.45 : 0.04 + 0.06 * q.level;
+      q.answers[b.id] = Math.random() < slip ? wrongPick() : q.answer;
     });
-  };
-  if (!q.study) return ask();
-  q.stage = 'study';
-  stage(room, 'quest', q.studyTime, () => ['-'], ask);
-}
-function resolvePuzzle(room) {
-  const q = room.quest, al = alive(room), wrong = al.filter(p => q.answers[p.id] !== q.answer).length, allowed = Math.floor(al.length / 4);
-  const success = wrong <= allowed;
-  room.last = { kind: q.kind, title: q.title, success, wrong, total: al.length, allowed, answerText: q.options[q.answer],
-    correct: Object.fromEntries(al.map(p => [p.id, q.answers[p.id] === q.answer])) };
-  reward(room, success);
-  toResult(room, `${q.title}: ${success ? 'solved' : 'failed'}, ${wrong} wrong answer${wrong === 1 ? '' : 's'} out of ${al.length}.`);
-}
-
-/* ---------- quest: expedition (chosen team, secret sabotage) ---------- */
-function startExpedition(room) {
-  const al = alive(room), n = room.players.length;
-  let leader;
-  for (let i = 1; i <= n; i++) { const p = room.players[(room.leaderIdx + i) % n]; if (p.alive) { leader = p; room.leaderIdx = (room.leaderIdx + i) % n; break; } }
-  const size = al.length <= 5 ? 2 : al.length <= 8 ? 3 : al.length <= 11 ? 4 : 5;
-  const q = room.quest = { kind: 'expedition', title: 'The Night Crossing', stage: 'team', leader: leader.id, size, team: null, plays: {} };
-  const depart = () => {
-    if (!q.team) q.team = shuffle(al).slice(0, size).map(p => p.id);
-    q.stage = 'mission';
-    stage(room, 'quest', 35, () => q.team.filter(id => !(id in q.plays)), () => resolveExpedition(room), b => {
-      if (!q.team.includes(b.id)) return;
-      const first = q.team.map(id => byId(room, id)).find(p => p.role === 'traitor');
-      q.plays[b.id] = b.role === 'traitor' && first === b && Math.random() < 0.65 ? 'sabotage' : 'secure';
-    });
-  };
-  stage(room, 'quest', 45, () => q.team ? [] : [leader.id], depart, b => {
-    if (b.id === leader.id) q.team = [b.id, ...shuffle(al.filter(p => p !== b)).slice(0, size - 1).map(p => p.id)];
   });
 }
-function resolveExpedition(room) {
-  const q = room.quest, sab = q.team.filter(id => q.plays[id] === 'sabotage').length, success = sab === 0;
-  if (!success) for (const id of q.team) room.sus[id] = (room.sus[id] || 0) + 0.8;
-  room.last = { kind: 'expedition', title: q.title, success, team: q.team, leader: q.leader, sabotages: sab };
+function resolveReading(room) {
+  const q = room.quest, al = alive(room), wrong = al.filter(p => q.answers[p.id] !== q.answer).length;
+  const allowed = Math.floor(al.length / 4) + (q.level >= 4 ? 1 : 0), success = wrong <= allowed;
+  room.last = { kind: 'reading', form: q.form, title: q.title, source: q.source, level: q.level, levelName: q.levelName, prompt: q.prompt, success, wrong, total: al.length, allowed,
+    answerText: q.options[q.answer], correct: Object.fromEntries(al.map(p => [p.id, q.answers[p.id] === q.answer])) };
   reward(room, success);
-  toResult(room, `${q.title}: ${list(q.team.map(id => label(byId(room, id))))} crossed. ${success ? 'The supplies arrived intact.' : sab + ' crate' + (sab === 1 ? ' was' : 's were') + ' sabotaged.'}`);
-}
-
-/* ---------- quest: search (private evidence, may be forged) ---------- */
-function startSearch(room) {
-  const al = alive(room), count = al.length <= 5 ? 3 : al.length <= 9 ? 4 : 5;
-  const q = room.quest = { kind: 'search', title: 'The Lodge Search', rooms: shuffle(ROOMS).slice(0, count), hot: rnd(count), picks: {}, forge: {} };
-  stage(room, 'quest', 40, () => alive(room).filter(p => !(p.id in q.picks)).map(p => p.id), () => resolveSearch(room), b => {
-    if (b.role === 'traitor' && Math.random() < 0.5) { q.picks[b.id] = q.hot; q.forge[b.id] = Math.random() < 0.6; }
-    else q.picks[b.id] = rnd(count);
-  });
-}
-function resolveSearch(room) {
-  const q = room.quest, al = alive(room);
-  for (const p of al) if (!(p.id in q.picks)) q.picks[p.id] = rnd(q.rooms.length);
-  const finders = al.filter(p => q.picks[p.id] === q.hot);
-  const forged = finders.some(p => p.role === 'traitor' && q.forge[p.id]);
-  const mine = {};
-  if (finders.length) {
-    const clue = makeClue(room, !forged, 'group');
-    room.vault += 100;
-    for (const p of finders) {
-      const tail = p.role === 'traitor' ? (forged ? ' (Forged by the traitors: it names only loyal members.)' : ' (Genuine: the others in the room now know this.)')
-        : finders.length > 1 ? ' (You were not alone in that room. If a traitor was with you, this may be a forgery.)' : ' (You searched alone, so nobody tampered with it.)';
-      mine[p.id] = clue.text + tail;
-      p.notes.push({ round: room.round, text: mine[p.id] });
-    }
-  } else room.stolen += 100;
-  room.last = { kind: 'search', title: q.title, rooms: q.rooms, hot: q.hot, picks: q.picks, found: finders.length > 0, mine };
-  toResult(room, `${q.title}: the evidence was in the ${q.rooms[q.hot]}. ${finders.length ? list(finders.map(label)) + ' found it.' : 'Nobody looked there.'}`);
+  toResult(room, `${q.title} (${q.levelName}): ${success ? 'passed' : 'failed'}, ${wrong} wrong answer${wrong === 1 ? '' : 's'} out of ${al.length}.`);
 }
 
 /* ---------- council: discussion, vote, exile ---------- */
@@ -248,7 +157,7 @@ function suspect(room, b) {
   for (const p of pool) { r -= 1 + 2 * (room.sus[p.id] || 0); if (r <= 0) return p; }
   return pool[0];
 }
-const BOT_LINES = ['I keep coming back to {n}.', '{n} has been very quiet about that last quest.', 'Something about {n} does not add up for me.',
+const BOT_LINES = ['I keep coming back to {n}.', '{n} has been very quiet about that last reading.', 'Something about {n} does not add up for me.',
   'If I had to name someone tonight, it would be {n}.', 'I would like to hear {n} explain themselves.', 'My vote is leaning towards {n}.'];
 function startCouncil(room) {
   room.council = { votes: {}, result: null };
@@ -258,7 +167,13 @@ function startCouncil(room) {
 }
 function startVote(room) {
   const c = room.council;
-  stage(room, 'vote', 50, () => alive(room).filter(p => !(p.id in c.votes)).map(p => p.id), () => resolveVote(room), b => { c.votes[b.id] = suspect(room, b).id; });
+  c.reasons = {};
+  stage(room, 'vote', 60, () => alive(room).filter(p => !(p.id in c.votes)).map(p => p.id), () => resolveVote(room), b => {
+    const t = suspect(room, b), picks = [];
+    if (room.named.has(t.id) && Math.random() < 0.7) picks.push(0);
+    while (picks.length < (Math.random() < 0.35 ? 2 : 1)) { const r = 1 + rnd(REASONS.length - 1); if (!picks.includes(r)) picks.push(r); }
+    c.votes[b.id] = t.id; c.reasons[b.id] = picks.map(i => REASONS[i]);
+  });
 }
 function resolveVote(room) {
   const c = room.council, al = alive(room), tally = {};
@@ -270,7 +185,7 @@ function resolveVote(room) {
     lead = Object.keys(tally).filter(k => tally[k] === best); lot = lead.length > 1; exiled = pick(lead);
   }
   else if (lead.length === 1 && lead[0] !== 'none') exiled = lead[0];
-  c.result = { votes: c.votes, exiled, lot, role: null };
+  c.result = { votes: c.votes, reasons: c.reasons, exiled, lot, role: null };
   if (exiled) {
     const p = byId(room, exiled); p.alive = false; p.fate = 'exiled'; c.result.role = p.role;
     event(room, `The council exiled ${label(p)}, who was ${p.role === 'traitor' ? 'a traitor' : 'loyal'}.`);
@@ -337,27 +252,16 @@ function act(room, me, a) {
     case 'answer':
       if (room.phase === 'quest' && q.stage === 'answer' && me.alive && !(me.id in q.answers) && q.options[a.choice] !== undefined) q.answers[me.id] = Number(a.choice);
       break;
-    case 'team': {
-      if (!(room.phase === 'quest' && q.kind === 'expedition' && q.stage === 'team' && me.id === q.leader)) break;
-      const ids = [...new Set(a.ids || [])];
-      if (ids.length !== q.size || ids.some(id => !byId(room, id) || !byId(room, id).alive)) fail(`Choose exactly ${q.size} living members.`);
-      q.team = ids; break;
-    }
-    case 'play':
-      if (room.phase === 'quest' && q.kind === 'expedition' && q.stage === 'mission' && q.team.includes(me.id) && !(me.id in q.plays))
-        q.plays[me.id] = a.play === 'sabotage' && me.role === 'traitor' ? 'sabotage' : 'secure';
-      break;
-    case 'search':
-      if (room.phase === 'quest' && q.kind === 'search' && me.alive && !(me.id in q.picks) && q.rooms[a.room] !== undefined) {
-        q.picks[me.id] = Number(a.room); q.forge[me.id] = !!a.forge && me.role === 'traitor';
-      }
-      break;
     case 'vote': {
       const c = room.council;
       if (!(room.phase === 'vote' && me.alive && !(me.id in c.votes))) break;
       const t = a.target === 'none' ? null : byId(room, a.target);
       if (a.target === 'none' ? alive(room).length > 6 : (!t || !t.alive || t === me)) fail('Choose another living member.');
-      c.votes[me.id] = t ? t.id : 'none'; break;
+      const picks = [...new Set((Array.isArray(a.reasons) ? a.reasons : []).map(Number))].filter(i => REASONS[i] !== undefined).slice(0, 2);
+      const note = String(a.note || '').trim().slice(0, 80);
+      if (t && !picks.length && !note) fail('Give at least one reason for your vote.');
+      c.votes[me.id] = t ? t.id : 'none';
+      c.reasons[me.id] = picks.map(i => REASONS[i]).concat(note ? ['\u201c' + note + '\u201d'] : []); break;
     }
     case 'night': {
       const n = room.night, t = byId(room, a.target);
@@ -385,18 +289,17 @@ function view(room, me) {
     councilNext: playing && councilDue(room), nightRule: alive(room).length > 6,
   };
   if (room.phase === 'quest') {
-    const edge = me.role === 'traitor';
-    if (q.kind === 'expedition') v.quest = { kind: q.kind, title: q.title, stage: q.stage, leader: q.leader, size: q.size, team: q.team, played: me.id in q.plays, canSabotage: edge };
-    else if (q.kind === 'search') v.quest = { kind: q.kind, title: q.title, rooms: q.rooms, picked: q.picks[me.id], hot: edge ? q.hot : undefined };
-    else v.quest = { kind: q.kind, title: q.title, stage: q.stage, study: q.stage === 'study' ? q.study : undefined,
-      prompt: q.stage === 'answer' ? q.prompt : undefined, options: q.stage === 'answer' ? q.options : undefined,
-      picked: q.answers[me.id], edge: edge && q.stage === 'answer' ? q.answer : undefined };
+    const study = q.stage === 'study';
+    v.quest = { kind: q.kind, form: q.form, title: q.title, source: q.source, stage: q.stage, level: q.level, levelName: q.levelName,
+      lines: study ? q.lines : undefined, svg: study ? q.svg : undefined,
+      prompt: study ? undefined : q.prompt, options: study ? undefined : q.options, picked: q.answers[me.id],
+      edge: me.role === 'traitor' && !study ? q.answer : undefined };   // traitors are always handed the answer
   }
   if (room.phase === 'qresult' && room.last) {
     const { correct, mine, ...pub } = room.last;
     v.last = Object.assign(pub, { youCorrect: correct ? correct[me.id] : undefined, yourClue: mine ? mine[me.id] : undefined });
   }
-  if (room.phase === 'vote') v.voted = room.council.votes[me.id];
+  if (room.phase === 'vote') { v.voted = room.council.votes[me.id]; v.reasons = REASONS; }
   if (room.phase === 'verdict') v.verdict = room.council.result;
   if (room.phase === 'night') v.nightPick = room.night.picks[me.id];
   if (room.phase === 'dawn') v.dawn = room.dawn;
