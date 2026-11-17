@@ -427,6 +427,10 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
       return res.end(fs.readFileSync(path.join(__dirname, 'public', 'index.html')));
     }
+    if (req.method === 'GET' && url.pathname === '/lodge3d.js') {
+      res.writeHead(200, { 'Content-Type': 'text/javascript; charset=utf-8', 'Cache-Control': 'no-cache' });
+      return res.end(fs.readFileSync(path.join(__dirname, 'public', 'lodge3d.js')));
+    }
     if (req.method === 'POST' && url.pathname === '/api/join') {
       const b = await body(req), name = String(b.name || '').trim().slice(0, 16), token = String(b.token || '');
       if (token.length < 8) return json(res, 400, { error: 'Missing seat token.' });
